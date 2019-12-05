@@ -5,6 +5,9 @@
 //One page size
 #define MAX_SIZE 4096
 #define MAX_LENGTH 100
+#define BUILTINS_LENGTH 2
+
+char *builtins[BUILTINS_LENGTH] = {"cd", "chdir"};
 
 int pid;
 
@@ -27,38 +30,36 @@ void handler(int signal) {
 	Run ysh loop
 */
 void start() {
-	char *line, **args, *user;
-	int status;
+	char *line, **args, *user, *host, *path;
 
 	//Catch SIGINT
 	signal(SIGINT, handler);
 
 	//Show context to the user
 	user = getenv("USER");
+	host = getenv("HOSTNAME");
+	path = malloc(MAX_LENGTH);
 
 	while(1) {
+		/*
+			Get the cwd and show it to the user
+		*/
+		if(getcwd(path, MAX_LENGTH) == NULL) {
+			perror("Could not get path");
+		}
 		/*
 			Get the current pid in order to avoid
 			breaking the shell instead of the running
 			process on SIGINT.
 		*/
 		pid = getpid();
-		printf("%s>", user);
+		printf("%s@%s:%s>", user, host, path);
 		//Read input
 		line = readline();
 		//Split input
 		args = tokenize(line);
-		//Fork the execution into another process
-		if(!(pid = fork())) {
-			//Execute the input from user
-			execute(args);
-		} else {
-			/*
-				Wait for the child process and return even if
-				it hasn't been traced by ptrace
-			*/
-			pid = waitpid(pid, &status, WUNTRACED);
-		}
+		//Execute the command
+		execute(args);
 	}
 }
 
@@ -134,6 +135,40 @@ char **tokenize(char *line) {
 	Executes a tokenized array of char pointers
 */
 int execute(char **args) {
-	execvp(args[0], args);
+	int status, builtin;
+
+	builtin = 0;
+	/*
+		Check if the command given is a builtin in order
+		to execute it directly and not on the child (fork)
+	*/
+	for(int i = 0; i < BUILTINS_LENGTH; i++) {
+		if(strncmp(builtins[i], args[0], strlen(builtins[i])) == 0) {
+			builtin = 1;
+			switch (i)
+			{
+			case 0://cd
+			case 1://chdir
+				chdir(args[1]);
+				return 0;
+			default:
+				break;
+			}
+		}
+	}
+
+	if(!builtin) {
+		//Fork the execution into another process
+		if(!(pid = fork())) {
+			//Execute the input from user
+			execvp(args[0], args);
+		} else {
+			/*
+				Wait for the child process and return even if
+				it hasn't been traced by ptrace
+			*/
+			pid = waitpid(pid, &status, WUNTRACED);
+		}
+	}
 	return 0;
 }
