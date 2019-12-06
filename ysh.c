@@ -10,14 +10,19 @@ int main() {
 	start();
 	return 0;
 }
+
+/*
+	Handle signals
+*/
 void handler(int signal) {
 	if(signal & SIGINT) {
 		/*
 			If the user hits ^C we kill the
 			running process
 		*/
-if (pid != getpid())
-	kill(pid, SIGKILL);
+		if (pid != getpid()) {
+			kill(pid, SIGKILL);
+		}
 	}
 }
 
@@ -133,31 +138,49 @@ void tokenize(char *line) {
 		NULL as specified by the man of execvp
 	*/
 	tokens[i] = NULL;
-
+	/*
+		If there's a PIPE_DELIM ('|') on the string
+		save the whole pipeline of commands and run it
+	*/
 	if(strchr(line, PIPE_DELIM) != NULL) {
-		pipecmd *cmds;
+		pipecmd *cmds;//Where the commands and pipes will be saved
 
-		cmds = malloc(sizeof(pipecmd));
-		cmds->n_commands = 1;
 
-		i = 0;
-		int j = 0, counter = 0;
-		int pipes[2];
+		cmds = malloc(sizeof(pipecmd));//Malloc struct into heap
+		cmds->n_commands = 1;//Because at least one command is running
+
+		i = 0;//Row (Determines each command)
+		int j = 0;//Column (Determines the argument count of each command)
+		int counter = 0;//Determines the position in the whole input string by user
+		int pipes[2];//To temporarily save the pipe fds
+		//If we haven't reached the end of the pipeline
 		while(tokens[counter] != NULL) {
+			//Check if the current string is a PIPE_DELIM
 			if(strncmp(tokens[counter], "|", 1) == 0) {
+				//Adding a new commands to the list
 				cmds->n_commands++;
+				//Set the last string as NULL for execvp requirements
 				cmds->commands[i][j + 1] = NULL;
+				//Create a new pipe
 				pipe(pipes);
+				//Save the read fd to the next process
 				cmds->pipes[i + 1][0] = pipes[0];
+				//Save the write fd to the current process
 				cmds->pipes[i][1] = pipes[1];
+				//Next command
 				i++;
+				//Beginning of command
 				j = 0;
+				//To avoid reading PIPE_DELIM again
 				counter++;
 			}
+			//Simply add the command or args to the corresponding ith value
 			cmds->commands[i][j++] = tokens[counter++];
 		}
+		//Execute the pipeline
 		execute_pipes(cmds);
 	} else {
+		//No pipeline, just execute the command
 		free(token);
 		execute(tokens);
 	}
@@ -204,7 +227,7 @@ int execute(char **args) {
 		} else {
 			/*
 				Wait for the child process and return even if
-				it hasn't been traced by ptrace
+				it hasn't been traced by ptrace (specified on man of waitpid)
 			*/
 			pid = waitpid(pid, &status, WUNTRACED);
 		}
@@ -216,25 +239,48 @@ int execute(char **args) {
 	Executes a number of piped commands
 */
 int execute_pipes(pipecmd *cmds) {
-
-	int i = 0;
-	for (i = 0; i < cmds->n_commands; i++) {
+	//For each commands specified
+	for (int i = 0; i < cmds->n_commands; i++) {
+		//Create a new process to execute the process
 		if (!(pid = fork())) {
+			//If the process is not the first one
 			if(i > 0) {
+				//Duplicate the input file descriptor (same as below, but w/ stdin)
 				dup2(cmds->pipes[i][0], STDIN_FILENO);
+				//And close the output file descriptor 
 				close(cmds->pipes[i - 1][1]);
 			}
+			//If the process is not the last one
 			if(i < cmds->n_commands - 1) {
+				/*
+					As I better understand it... The pipe fd
+					will now be pointing to the stdout fd position
+					on the fds table of this process, therefore
+					writing everything to the pipe.
+				*/
 				dup2(cmds->pipes[i][1], STDOUT_FILENO);
+				///Close the input file descriptor of the next process
 				close(cmds->pipes[i + 1][0]);
 			}
 			execvp(cmds->commands[i][0], cmds->commands[i]);
 		} else {
 			int status;
-
+			/*
+				Close each of the pipe ends on 
+				the parent in order to avoid stalling
+				and to avoid each subsquent process
+				to have n_commands - 1 * 2 fds instead
+				of just 2.
+			*/
+			if(cmds->pipes[i][0] != 0) {
+				close(cmds->pipes[i][0]);
+			}
+			if(cmds->pipes[i][1] != 0) {
+				close(cmds->pipes[i][1]);
+			}
+			//Wait for the last child that executed
 			waitpid(pid, &status, WUNTRACED);
 		}
 	}
-
 	return 0;
 }
