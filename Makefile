@@ -1,15 +1,15 @@
 SOURCES=ysh.c
+TEST=test.c
 FLAGS= -Wall -pedantic -ggdb
 MAIN=main
-DEBUG=debug
 
-all: $(MAIN) $(DEBUG)
+all: $(MAIN)
+
+test: $(TEST)
+	gcc $(FLAGS) $(TEST) -o test
 
 main: $(SOURCES)
 	gcc $(FLAGS) $(SOURCES) -o ysh
-
-debug: $(SOURCES)
-	gcc $(FLAGS) -DDEBUG $(SOURCES) -o debug
 
 clean:
 	rm ysh debug

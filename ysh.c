@@ -1,15 +1,10 @@
+/**********************************
+ * Author: Emilio E. G. Cantón Bermúdez
+ * Date: Nov. 28
+ * Last Updated: Dec. 6
+ * License: MIT
+**********************************/
 #include "ysh.h"
-
-//We'll split the input by these
-#define DELIM " \t\r\n"
-//One page size
-#define MAX_SIZE 4096
-#define MAX_LENGTH 100
-#define BUILTINS_LENGTH 2
-
-char *builtins[BUILTINS_LENGTH] = {"cd", "chdir"};
-
-int pid;
 
 int main() {
 	start();
@@ -21,8 +16,8 @@ void handler(int signal) {
 			If the user hits ^C we kill the
 			running process
 		*/
-		if(pid != getpid())
-			kill(pid, SIGKILL);
+if (pid != getpid())
+	kill(pid, SIGKILL);
 	}
 }
 
@@ -30,7 +25,7 @@ void handler(int signal) {
 	Run ysh loop
 */
 void start() {
-	char *line, **args, *user, *host, *path;
+	char *line, *user, *host, *path;
 
 	//Catch SIGINT
 	signal(SIGINT, handler);
@@ -56,15 +51,13 @@ void start() {
 		printf("%s@%s:%s>", user, host, path);
 		//Read input
 		line = readline();
-		//Split input
-		args = tokenize(line);
-		//Execute the command
-		execute(args);
+		//Split input and execute it
+		tokenize(line);
 	}
 }
 
 /*
-	Read a line from stdin and changes the
+	Reads a line from stdin and changes the
 	\n character to \0.
 */
 char *readline() {
@@ -83,15 +76,16 @@ char *readline() {
 }
 
 /*
-	Splits the each line into an array of tokens
+	Splits a line into an array of tokens split by DELIM
 */
-char **tokenize(char *line) {
+void tokenize(char *line) {
 	int max_size;
 	char **tokens;//To store the array of commands
 	char *token;//To store each tokens
 
+
 	/*
-		Malloc each element of the array
+		Malloc the array
 		Malloc the token (buffer)
 	*/
 	max_size = MAX_SIZE;
@@ -109,6 +103,20 @@ char **tokenize(char *line) {
 		int str_len = strlen(token);
 		//Malloc memory to the new string in the array
 		tokens[i] = malloc(str_len + 1);
+
+		//Check if the token is an environment variable
+		if(token[0] == '$') {
+			char *variable;
+
+			variable = malloc(MAX_LENGTH);
+			strncpy(variable, token + 1, MAX_LENGTH);
+			//Check if the environment variable exists
+			if((token = getenv(variable)) == NULL) {
+				//Else assign an empty string
+				token = "";
+			}
+		}
+
 		//Copy the token into the array
 		strncpy(tokens[i++], token, str_len + 1);
 		//If the size of the input surpassed the limit
@@ -126,9 +134,33 @@ char **tokenize(char *line) {
 	*/
 	tokens[i] = NULL;
 
-	free(token);
+	if(strchr(line, PIPE_DELIM) != NULL) {
+		pipecmd *cmds;
 
-	return tokens;
+		cmds = malloc(sizeof(pipecmd));
+		cmds->n_commands = 1;
+
+		i = 0;
+		int j = 0, counter = 0;
+		int pipes[2];
+		while(tokens[counter] != NULL) {
+			if(strncmp(tokens[counter], "|", 1) == 0) {
+				cmds->n_commands++;
+				cmds->commands[i][j + 1] = NULL;
+				pipe(pipes);
+				cmds->pipes[i + 1][0] = pipes[0];
+				cmds->pipes[i][1] = pipes[1];
+				i++;
+				j = 0;
+				counter++;
+			}
+			cmds->commands[i][j++] = tokens[counter++];
+		}
+		execute_pipes(cmds);
+	} else {
+		free(token);
+		execute(tokens);
+	}
 }
 
 /*
@@ -151,6 +183,13 @@ int execute(char **args) {
 			case 1://chdir
 				chdir(args[1]);
 				return 0;
+			case 2://exit
+				printf("Thanks for using YSH!\n");
+				exit(0);
+				break;
+			case 3://help
+				printf("%s\n", HELP_STRING);
+				break;
 			default:
 				break;
 			}
@@ -170,5 +209,32 @@ int execute(char **args) {
 			pid = waitpid(pid, &status, WUNTRACED);
 		}
 	}
+	return 0;
+}
+
+/*
+	Executes a number of piped commands
+*/
+int execute_pipes(pipecmd *cmds) {
+
+	int i = 0;
+	for (i = 0; i < cmds->n_commands; i++) {
+		if (!(pid = fork())) {
+			if(i > 0) {
+				dup2(cmds->pipes[i][0], STDIN_FILENO);
+				close(cmds->pipes[i - 1][1]);
+			}
+			if(i < cmds->n_commands - 1) {
+				dup2(cmds->pipes[i][1], STDOUT_FILENO);
+				close(cmds->pipes[i + 1][0]);
+			}
+			execvp(cmds->commands[i][0], cmds->commands[i]);
+		} else {
+			int status;
+
+			waitpid(pid, &status, WUNTRACED);
+		}
+	}
+
 	return 0;
 }
