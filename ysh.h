@@ -13,7 +13,6 @@
 #include <fcntl.h>
 #include <string.h>	
 
-#define BUFFER_SIZE 1024
 //We'll split the input by these
 #define DELIM " \t\r\n"
 #define PIPE_DELIM '|'

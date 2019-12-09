@@ -2,11 +2,12 @@ SOURCES=ysh.c
 TEST=test.c
 FLAGS= -Wall -pedantic -ggdb
 MAIN=main
+MANUAL=manual
 
-all: $(MAIN)
+all: $(MAIN) $(MANUAL)
 
-test: $(TEST)
-	gcc $(FLAGS) $(TEST) -o test
+manual:
+	pandoc -o Manual.pdf Manual.md
 
 main: $(SOURCES)
 	gcc $(FLAGS) $(SOURCES) -o ysh

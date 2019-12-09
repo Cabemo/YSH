@@ -1,7 +1,7 @@
 /**********************************
  * Author: Emilio E. G. Cantón Bermúdez
  * Date: Nov. 28
- * Last Updated: Dec. 6
+ * Last Updated: Dec. 9
  * License: MIT
 **********************************/
 #include "ysh.h"
@@ -17,11 +17,11 @@ int main() {
 void handler(int signal) {
 	if(signal & SIGINT) {
 		/*
-			If the user hits ^C we kill the
+			If the user hits ^C we interrupt the
 			running process
 		*/
 		if (pid != getpid()) {
-			kill(pid, SIGKILL);
+			kill(pid, SIGINT);
 		}
 	}
 }
@@ -35,14 +35,24 @@ void start() {
 	//Catch SIGINT
 	signal(SIGINT, handler);
 
-	//Show context to the user
-	user = getenv("USER");
-	host = getenv("HOSTNAME");
 	path = malloc(MAX_LENGTH);
 
 	while(1) {
+		/* SHOW CONTEXT TO USER */
 		/*
-			Get the cwd and show it to the user
+			Get the user
+		*/
+		if((user = getenv("USER")) == NULL) {
+			perror("Could no get user");
+		}
+		/*
+			Get the host
+		*/
+		if((host = getenv("HOSTNAME")) == NULL) {
+			perror("Could no get host");
+		}
+		/*
+			Get the cwd
 		*/
 		if(getcwd(path, MAX_LENGTH) == NULL) {
 			perror("Could not get path");
@@ -210,7 +220,8 @@ void tokenize(char *line) {
 				if(error == -1) {
 					perror("Bad output redirection");
 				} else {
-					if((file_fd = open(filename, O_RDONLY)) == -1) {
+					//Open the file we are going to read from
+					if((file_fd = open(filename, O_RDWR)) == -1) {
 						perror("Error opening file for input");
 					} else {
 						fd = fd == -1 ? STDIN_FILENO : fd;
@@ -248,7 +259,8 @@ void tokenize(char *line) {
 				if(error == -1) {
 					perror("Bad output redirection");
 				} else {
-					if((file_fd = open(filename, O_WRONLY | O_CREAT)) == -1) {
+					//Open the file to which we are going to write on (create it if if does not exist)
+					if((file_fd = open(filename, O_RDWR | O_CREAT)) == -1) {
 						perror("Error opening file for output");
 					} else {
 						fd = fd == -1 ? STDOUT_FILENO : fd;
