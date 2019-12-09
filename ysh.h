@@ -9,7 +9,8 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <wait.h>
-#include <signal.h>	
+#include <signal.h>
+#include <fcntl.h>
 #include <string.h>	
 
 #define BUFFER_SIZE 1024
@@ -47,6 +48,6 @@ char *builtins[BUILTINS_LENGTH] = {"cd", "chdir", "exit", "help"};
 
 char *readline();
 void tokenize(char *line);
-int execute(char **args);
+int execute(char **args, int redirects[2][2]);
 int execute_pipes(pipecmd *cmds);
 void start();

@@ -180,16 +180,99 @@ void tokenize(char *line) {
 		//Execute the pipeline
 		execute_pipes(cmds);
 	} else {
+		//Input/Output Redirect index
+		char *ir, *or;
+		int redirects[2][2] = {
+			{-1, -1},
+			{-1, -1}
+		};
+		if((ir = strchr(tokens[i - 1], '<')) != NULL) {
+			int ir_index = -1;
+			int fd = -1, file_fd, error;
+			char filename[MAX_LENGTH];
+
+			if(tokens[i - 1][0] == '<')
+				ir_index = 0;
+			if(tokens[i - 1][1] == '<')
+				ir_index = 1;
+			if(ir_index == 0 || ir_index == 1) {
+
+				switch (ir_index) {
+				case 0:
+					error = sscanf(tokens[i - 1], "<%s", filename);
+					break;
+				case 1:
+					error = sscanf(tokens[i - 1], "%d%s", &fd, filename);
+					break;
+				default:
+					break;
+				}
+				if(error == -1) {
+					perror("Bad output redirection");
+				} else {
+					if((file_fd = open(filename, O_RDONLY)) == -1) {
+						perror("Error opening file for input");
+					} else {
+						fd = fd == -1 ? STDIN_FILENO : fd;
+						redirects[0][0] = file_fd;
+						redirects[0][1] = fd;
+					}
+				
+				}
+
+			} else {
+				printf("Bad input redirection\n");
+			}
+			tokens[i - 1] = NULL;
+		}
+		if((or = strchr(line, '>')) != NULL) {
+			int or_index;
+			int fd = -1, file_fd, error;
+			char filename[MAX_LENGTH];
+
+			if(tokens[i - 1][0] == '>')
+				or_index = 0;
+			if(tokens[i - 1][1] == '>')
+				or_index = 1;
+			if(or_index == 0 || or_index == 1) {
+				switch (or_index) {
+				case 0:
+					error = sscanf(tokens[i - 1], ">%s", filename);
+					break;
+				case 1:
+					error = sscanf(tokens[i - 1], "%d>%s", &fd, filename);
+					break;
+				default:
+					break;
+				}
+				if(error == -1) {
+					perror("Bad output redirection");
+				} else {
+					if((file_fd = open(filename, O_WRONLY | O_CREAT)) == -1) {
+						perror("Error opening file for output");
+					} else {
+						fd = fd == -1 ? STDOUT_FILENO : fd;
+						redirects[1][0] = fd;
+						redirects[1][1] = file_fd;
+					}
+
+				}
+
+			} else {
+				printf("Bad output redirection\n");
+			}
+			tokens[i - 1] = NULL;
+		}
 		//No pipeline, just execute the command
 		free(token);
-		execute(tokens);
+		execute(tokens, redirects);
 	}
 }
 
 /*
 	Executes a tokenized array of char pointers
 */
-int execute(char **args) {
+int execute(char **args, int redirects[2][2]) {
 	int status, builtin;
 
 	builtin = 0;
@@ -222,9 +305,23 @@ int execute(char **args) {
 	if(!builtin) {
 		//Fork the execution into another process
 		if(!(pid = fork())) {
+			if(redirects[1][0] != -1) {
+				if(dup2(redirects[1][1], redirects[1][0]) == -1) {
+					perror("Error copying file descriptor");
+				}
+			}
+			if(redirects[0][0] != -1) {
+				if(dup2(redirects[0][0], redirects[0][1]) == -1) {
+					perror("Error copying file descriptor");
+				}
+			}
 			//Execute the input from user
 			execvp(args[0], args);
 		} else {
+			if(redirects[0] != 0)
+				close(redirects[0][0]);
+			if(redirects[1] != 0)
+				close(redirects[1][1]);
 			/*
 				Wait for the child process and return even if
 				it hasn't been traced by ptrace (specified on man of waitpid)
